@@ -13,12 +13,12 @@
     "onLanguage:python",
     "onLanguage:javascript"
   ],
-  "main": "./extension.js",
+  "main": "./src/extension.js",
   "contributes": {
     "commands": [
       {"command": "codewiz.addNote",
         "title": "Add Note"},
-      {"command": "extension.addDot",
+      {"command": "codewiz.addDot",
       "title": "Add Dot"}
     ],
     "viewsContainers": {
