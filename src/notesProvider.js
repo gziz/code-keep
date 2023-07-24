@@ -1,14 +1,14 @@
 const vscode = require('vscode');
-const { notesUpdatedEvent } = require('./notesUtils');
+const { getLineToNoteNumber, getNoteNumberToNote, getRangeToNoteNumber, notesUpdatedEvent } = require('./notesUtils');
 
 
 class CodewizNotesProvider {
     constructor(extensionUri) {
         this._extensionUri = extensionUri;
 		this._view = null;
+
 		notesUpdatedEvent.event(() => {
             if (this._view) {
-				console.log("hey", this._view.webview.html)
                 this._view.webview.html = this._getHtmlForWebview(this._view.webview);
             }
         });
@@ -18,22 +18,27 @@ class CodewizNotesProvider {
 		webviewView.webview.options = {
 			// Allow scripts in the webview
 			enableScripts: true,
-	  
 			localResourceRoots: [this._extensionUri],
 		  };
-        // webviewView.webview.html = his._getHtmlForWebview(webviewView.webview);
+
+		this.lineToNoteNumber = getLineToNoteNumber()
+		this.noteNumberToNote = getNoteNumberToNote()
+		this.rangeToNoteNumber = getRangeToNoteNumber()
+		
 		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 		this._view = webviewView;
 
+
 		webviewView.webview.onDidReceiveMessage(message => {
 			if (message.command === 'goToNote') {
-				// Find the line number for the note
-				let lineNumber = Array.from(lineToNoteNumber.entries()).find(([line, noteNumber]) => noteNumber === message.noteNumber)[0];
-				console.log(lineNumber)
-				if (typeof lineNumber !== 'undefined') {
+				console.log(message)
+				// Find the line number given the noteNumber (inside message.noteNumber)
+				// let lineNumber = Array.from(this.lineToNoteNumber.entries()).find(([line, noteNumber]) => noteNumber === message.noteNumber)[0];
+
+				if (typeof message.startLine !== 'undefined') {
 					// Go to the line
 					let editor = vscode.window.activeTextEditor;
-					let targetLine = new vscode.Position(lineNumber, 0);
+					let targetLine = new vscode.Position(message.startLine, 0);
 					editor.selection = new vscode.Selection(targetLine, targetLine);
 					editor.revealRange(new vscode.Range(targetLine, targetLine));
 	
@@ -45,14 +50,20 @@ class CodewizNotesProvider {
 		const scriptSource = webview.asWebviewUri(
 			vscode.Uri.joinPath(this._extensionUri, 'src', 'webView.js')
 		);
-		console.log(scriptSource);
-		// Here you can generate HTML for the webview.
-		// You can use notes from your noteNumberToNote Map.
+		
 		let htmlContent = `<html><body>`;
 		
-		noteNumberToNote.forEach((note, noteNumber) => {
-			// Each note will be an anchor that sends a postMessage when clicked
-			htmlContent += `<p><a href="#" onclick="sendMessage(${noteNumber})">Note ${noteNumber}: ${note}</a></p>`;
+		this.rangeToNoteNumber.forEach((noteNumber, range) => {
+			let [startLine, endLine] = range.split(",")
+			let note = this.noteNumberToNote.get(noteNumber)
+			
+			
+			htmlContent += `
+				<div id="note-${noteNumber}" onclick="sendMessage(${startLine})" style="margin-bottom: 20px; cursor: pointer;">
+					<h3>Note. ${startLine}-${endLine}</h3>
+					<textarea style="width: 100%; height: 60px;">${note}</textarea>
+				</div>
+			`;
 		});
 	
 		htmlContent += `
@@ -60,6 +71,7 @@ class CodewizNotesProvider {
 		</body></html>`;
 		return htmlContent;
 	}
+	
 }
 
 module.exports = CodewizNotesProvider;

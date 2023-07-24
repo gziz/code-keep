@@ -2,12 +2,24 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const {workspace, Uri} = require('vscode');
-const {TextEncoder, TextDecoder} = require('util');
 
-let globalNotesDir = "/Users/gerardo/Desktop/vs-notes"
+let globalNotesDir = "/Users/gerardo/Desktop/vs-notes";
 let lineToNoteNumber = new Map();
 let noteNumberToNote = new Map();
+let rangeToNoteNumber = new Map();
 const notesUpdatedEvent = new vscode.EventEmitter();
+
+function getLineToNoteNumber() {
+    return lineToNoteNumber;
+}
+
+function getNoteNumberToNote() {
+    return noteNumberToNote;
+}
+
+function getRangeToNoteNumber() {
+    return rangeToNoteNumber;
+}
 
 async function loadNotes() {
 	
@@ -18,7 +30,6 @@ async function loadNotes() {
 
 		let notesFilePath = `${globalNotesDir}/${currentFileName}.json`
 		let parsedNotesFilePath = Uri.parse(notesFilePath)
-        console.log("Loading notes from: ", parsedNotesFilePath)
 
         if (fs.existsSync(notesFilePath)) {
 
@@ -29,16 +40,25 @@ async function loadNotes() {
             noteNumberToNote.clear();
             lineToNoteNumber = new Map(obj.lineToNoteNumber);
             noteNumberToNote = new Map(obj.noteNumberToNote);
-			console.log("lineToNoteNumber: ", noteNumberToNote);
-			console.log("noteNumberToNote: ", lineToNoteNumber);
+            rangeToNoteNumber = new Map(obj.rangeToNoteNumber);
+
+			console.log("noteNumberToNote: ", noteNumberToNote);
+			console.log("lineToNoteNumber: ", lineToNoteNumber);
+            console.log("rangeToNoteNumber: ", rangeToNoteNumber);
 
         }
     }
 }
 
+loadNotes()
+
 module.exports = {
+    getLineToNoteNumber,
+    getNoteNumberToNote,
+    getRangeToNoteNumber,
     loadNotes,
     lineToNoteNumber,
     noteNumberToNote,
-    notesUpdatedEvent
+    notesUpdatedEvent,
+    globalNotesDir
 };
