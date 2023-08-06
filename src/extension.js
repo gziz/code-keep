@@ -1,22 +1,47 @@
 const vscode = require('vscode');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
 const { addNote, addDot } = require('./commands');
 const { hoverProvider } = require('./hoverProvider');
-const { loadNotes } = require('./notesUtils');
+const notesUtils = require('./notesUtils');
 const CodewizNotesProvider = require('./notesProvider');
+const dbUtils = require('./dbUtils')
+const { notesUpdatedEvent } = require('./events');
+const { updateWorkspacePath, updateWorkspaceID, getWorkspaceId } = require('./workspaceInfo');
 
 /**
  * @param {vscode.ExtensionContext} context
  */
 async function activate(context) {
     console.log('Codewiz is active!');
-    await loadNotes();
+    let db;
+    let workspaceId;
+    let workspacePath;
+
+    if (vscode.workspace.workspaceFolders !== undefined) {
+        workspacePath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        const dbPath = path.join(workspacePath, 'notes.db');
+
+        db = new sqlite3.Database(dbPath);
+
+        workspaceId = await dbUtils.getWorkspaceIdByPath(db, workspacePath);
+        if (!workspaceId) {
+            await dbUtils.insertWorkspace(db, workspacePath);
+        }
+
+        updateWorkspacePath(workspacePath);
+        updateWorkspaceID(workspaceId);
+    }
+
+    await notesUtils. loadWorkspaceNotes(db);
 
     vscode.window.onDidChangeActiveTextEditor(async () => {
-        await loadNotes();
+        notesUtils.loadCurrFileNotes();
+        notesUpdatedEvent.fire();
     });
 
     const addDotCmd = vscode.commands.registerCommand('codewiz.addDot', addDot);
-    const addNoteCmd = vscode.commands.registerCommand('codewiz.addNote', addNote);
+    const addNoteCmd = vscode.commands.registerCommand('codewiz.addNote', () => addNote(db));
     
     context.subscriptions.push(addDotCmd);
     context.subscriptions.push(addNoteCmd);
@@ -27,7 +52,9 @@ async function activate(context) {
 }
 
 // This method is called when your extension is deactivated
-function deactivate() {}
+function deactivate() {
+    db.close()
+}
 
 module.exports = {
 	activate,

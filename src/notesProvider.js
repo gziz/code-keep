@@ -1,6 +1,7 @@
 const vscode = require('vscode');
-const { getLineToNoteNumber, getNoteNumberToNote, getRangeToNoteNumber, notesUpdatedEvent } = require('./notesUtils');
-
+const path = require('path');
+const notesUtils = require('./notesUtils');
+const { notesUpdatedEvent } = require('./events');
 
 class CodewizNotesProvider {
     constructor(extensionUri) {
@@ -8,22 +9,18 @@ class CodewizNotesProvider {
 		this._view = null;
 
 		notesUpdatedEvent.event(() => {
-            if (this._view) {
-                this._view.webview.html = this._getHtmlForWebview(this._view.webview);
-            }
+			this.currFileNotes = notesUtils.getCurrFileNotes();
+			this._view.webview.html = this._getHtmlForWebview(this._view.webview);
         });
     }
 
     resolveWebviewView(webviewView) {
 		webviewView.webview.options = {
-			// Allow scripts in the webview
 			enableScripts: true,
 			localResourceRoots: [this._extensionUri],
 		  };
 
-		this.lineToNoteNumber = getLineToNoteNumber()
-		this.noteNumberToNote = getNoteNumberToNote()
-		this.rangeToNoteNumber = getRangeToNoteNumber()
+		this.currFileNotes = notesUtils.getCurrFileNotes();
 		
 		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 		this._view = webviewView;
@@ -32,11 +29,9 @@ class CodewizNotesProvider {
 		webviewView.webview.onDidReceiveMessage(message => {
 			if (message.command === 'goToNote') {
 				console.log(message)
-				// Find the line number given the noteNumber (inside message.noteNumber)
-				// let lineNumber = Array.from(this.lineToNoteNumber.entries()).find(([line, noteNumber]) => noteNumber === message.noteNumber)[0];
 
 				if (typeof message.startLine !== 'undefined') {
-					// Go to the line
+
 					let editor = vscode.window.activeTextEditor;
 					let targetLine = new vscode.Position(message.startLine, 0);
 					editor.selection = new vscode.Selection(targetLine, targetLine);
@@ -51,17 +46,14 @@ class CodewizNotesProvider {
 			vscode.Uri.joinPath(this._extensionUri, 'src', 'webView.js')
 		);
 		
-		let htmlContent = `<html><body>`;
+		let htmlContent = `<html><body><h1>Your notes!</h1>`;
 		
-		this.rangeToNoteNumber.forEach((noteNumber, range) => {
-			let [startLine, endLine] = range.split(",")
-			let note = this.noteNumberToNote.get(noteNumber)
-			
+		this.currFileNotes.forEach((note, noteNum) => {
 			
 			htmlContent += `
-				<div id="note-${noteNumber}" onclick="sendMessage(${startLine})" style="margin-bottom: 20px; cursor: pointer;">
-					<h3>Note. ${startLine}-${endLine}</h3>
-					<textarea style="width: 100%; height: 60px;">${note}</textarea>
+				<div id="note-${note.id}" onclick="sendMessage(${note.start_line})" style="margin-bottom: 20px; cursor: pointer;">
+					<h3>Note. ${note.start_line}-${note.end_line}</h3>
+					<textarea style="width: 100%; height: 60px;">${note.content}</textarea>
 				</div>
 			`;
 		});
@@ -70,6 +62,7 @@ class CodewizNotesProvider {
 		<script src="${scriptSource}"></script>
 		</body></html>`;
 		return htmlContent;
+
 	}
 	
 }

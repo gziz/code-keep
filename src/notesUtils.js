@@ -1,64 +1,91 @@
 const vscode = require('vscode');
-const fs = require('fs');
+const dbUtils = require('./dbUtils');
 const path = require('path');
-const {workspace, Uri} = require('vscode');
+const { getWorkspaceId, getWorkspacePath } = require('./workspaceInfo');
+const { notesUpdatedEvent } = require('./events');
 
-let globalNotesDir = "/Users/gerardo/Desktop/vs-notes";
-let lineToNoteNumber = new Map();
-let noteNumberToNote = new Map();
-let rangeToNoteNumber = new Map();
-const notesUpdatedEvent = new vscode.EventEmitter();
+let workspaceNotes;
+let currFileNotes;
+let lineToNoteMap = new Map();
 
-function getLineToNoteNumber() {
-    return lineToNoteNumber;
+function getWorkspaceNotes() {
+    return workspaceNotes;
+}
+function updateWorkspaceNotes(notes) {
+    workspaceNotes = notes;
 }
 
-function getNoteNumberToNote() {
-    return noteNumberToNote;
+function getCurrFileNotes() {
+    if (!currFileNotes) {
+        loadCurrFileNotes();
+    }
+    return currFileNotes ? currFileNotes : [];
 }
 
-function getRangeToNoteNumber() {
-    return rangeToNoteNumber;
+function updateCurrFileNotes(notes) {
+    currFileNotes = notes;
 }
 
-async function loadNotes() {
-	
+function insertNoteLocal(content, startLine, endLine, relativeFilePath) {
+    let note = {
+        id: currFileNotes ? currFileNotes.length + 1 : 1,
+        content: content,
+        start_line: startLine,
+        end_line: endLine
+    };
+    
+    workspaceNotes[relativeFilePath].push(note);
+    loadLineToNoteMap();
+}
+
+function loadLineToNoteMap() {
+    let currFileNotes = getCurrFileNotes();
+    currFileNotes.forEach(note => {
+        for(let i=note.start_line; i<=note.end_line; i++) {
+            lineToNoteMap.set(i, note);
+        }
+    });
+}
+
+function getLineToNoteMap() {
+    if (!lineToNoteMap || Object.keys(lineToNoteMap).length === 0) {
+        loadLineToNoteMap();
+    }
+    return lineToNoteMap;
+}
+
+async function loadWorkspaceNotes(db) {
+
     let editor = vscode.window.activeTextEditor;
     if (editor) {
-        let currentFileObj = path.parse(editor.document.fileName);
-        let currentFileName = currentFileObj.name;
-
-		let notesFilePath = `${globalNotesDir}/${currentFileName}.json`
-		let parsedNotesFilePath = Uri.parse(notesFilePath)
-
-        if (fs.existsSync(notesFilePath)) {
-
-            let data = await workspace.fs.readFile(parsedNotesFilePath)
-            
-            let obj = JSON.parse(data.toString())
-            lineToNoteNumber.clear();
-            noteNumberToNote.clear();
-            lineToNoteNumber = new Map(obj.lineToNoteNumber);
-            noteNumberToNote = new Map(obj.noteNumberToNote);
-            rangeToNoteNumber = new Map(obj.rangeToNoteNumber);
-
-			console.log("noteNumberToNote: ", noteNumberToNote);
-			console.log("lineToNoteNumber: ", lineToNoteNumber);
-            console.log("rangeToNoteNumber: ", rangeToNoteNumber);
-
-        }
+        const workspaceId = getWorkspaceId();
+        let notes = await dbUtils.getWorkspaceNotes(db, workspaceId);
+        updateWorkspaceNotes(notes);
     }
 }
 
-loadNotes()
+async function loadCurrFileNotes() {
+
+    let editor = vscode.window.activeTextEditor;
+    if (editor) {
+        let workspacePath = getWorkspacePath();
+        let relativeFilePath = path.relative(workspacePath, editor.document.fileName);
+    
+        if (!workspaceNotes.hasOwnProperty(relativeFilePath)){
+            workspaceNotes[relativeFilePath] = [];
+        }
+        currFileNotes = workspaceNotes[relativeFilePath];
+    }
+
+}
+
 
 module.exports = {
-    getLineToNoteNumber,
-    getNoteNumberToNote,
-    getRangeToNoteNumber,
-    loadNotes,
-    lineToNoteNumber,
-    noteNumberToNote,
-    notesUpdatedEvent,
-    globalNotesDir
+    loadWorkspaceNotes,
+    getWorkspaceNotes,
+    getCurrFileNotes,
+    loadLineToNoteMap,
+    loadCurrFileNotes,
+    getLineToNoteMap,
+    insertNoteLocal,
 };

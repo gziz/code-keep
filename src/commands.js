@@ -1,7 +1,9 @@
 const vscode = require('vscode');
 const path = require('path');
-const { getLineToNoteNumber, getNoteNumberToNote, getRangeToNoteNumber, notesUpdatedEvent, globalNotesDir }  = require('./notesUtils');
-const { TextEncoder } = require('util');
+const dbUtils = require('./dbUtils');
+const notesUtils = require('./notesUtils');
+const { notesUpdatedEvent } = require('./events');
+const { getWorkspaceId, getWorkspacePath } = require('./workspaceInfo');
 
 function sortMapByRangeKeys(unsortedMap) {
     let sortedMap = new Map([...unsortedMap.entries()].sort((a, b) => {
@@ -15,6 +17,9 @@ function sortMapByRangeKeys(unsortedMap) {
 
 
 const addDot = (startLine, endLine) => {
+    // const workspaceId = getWorkspaceId();
+    // const workspacePath = getWorkspacePath();
+
     let editor = vscode.window.activeTextEditor;
 
     if (editor) {
@@ -35,12 +40,15 @@ const addDot = (startLine, endLine) => {
     }
 };
 
-const addNote = async () => {
-    let editor = vscode.window.activeTextEditor; 
+const addNote = async (db) => {
+
+    let editor = vscode.window.activeTextEditor;
     if (editor) {
-        lineToNoteNumber = getLineToNoteNumber()
-        noteNumberToNote = getNoteNumberToNote()
-        rangeToNoteNumber = getRangeToNoteNumber()
+        const workspaceId = getWorkspaceId();
+        const workspacePath = getWorkspacePath();
+        
+        let relativeFilePath = path.relative(workspacePath, editor.document.fileName);
+        let fileId = await dbUtils.getFileIdByPath(db, relativeFilePath, workspaceId);
 
         let selection = editor.selection;
         let note = await vscode.window.showInputBox({ prompt: 'Enter your note' });
@@ -48,33 +56,14 @@ const addNote = async () => {
         if (note) {
             let startLine = selection.start.line
             let endLine = selection.end.line;
-            rangeToNoteNumber.set(`${startLine},${endLine}`, noteNumberToNote.size)
+            await dbUtils.insertNote(db, note, startLine, endLine, fileId);
+            notesUtils.insertNoteLocal(note, startLine, endLine, relativeFilePath);
 
-            for (i = startLine; i <= endLine; i++) {
-                lineToNoteNumber.set(i, noteNumberToNote.size)
-            }
-            noteNumberToNote.set(noteNumberToNote.size, note)
-            
-            vscode.window.showInformationMessage('Your new note: ' + note);
-            
-            sortedRangeToNoteNumber = sortMapByRangeKeys(rangeToNoteNumber);
-            console.log(sortedRangeToNoteNumber)
-            let data = {
-                lineToNoteNumber: Array.from(lineToNoteNumber.entries()),
-                noteNumberToNote: Array.from(noteNumberToNote.entries()),
-                rangeToNoteNumber: Array.from(sortedRangeToNoteNumber.entries()),
-            };
-
-            let currentFilePathObj = path.parse(editor.document.fileName);
-            let currentFileName = currentFilePathObj.name;
-            let parsedNotesFilePath = vscode.Uri.file(`${globalNotesDir}/${currentFileName}.json`)
-            
-            addDot(startLine, endLine);
             notesUpdatedEvent.fire();
-            return vscode.workspace.fs.writeFile(parsedNotesFilePath, new TextEncoder().encode(JSON.stringify(data)));
         }
+
     }
-};
+}
 
 module.exports = {
     addNote,
